@@ -284,7 +284,8 @@ class Model {
 
   void Init(unsigned int num_scattering_orders = 4);
 
-  GLuint shader() const { return atmosphere_shader_; }
+  // GLuint shader() const { return atmosphere_shader_; }
+  const std::string& shader_source() const { return atmosphere_shader_source_; }
 
   void SetProgramUniforms(
       GLuint program,
@@ -331,7 +332,8 @@ class Model {
   GLuint scattering_texture_;
   GLuint optional_single_mie_scattering_texture_;
   GLuint irradiance_texture_;
-  GLuint atmosphere_shader_;
+  // GLuint atmosphere_shader_;
+  std::string atmosphere_shader_source_;
   GLuint full_screen_quad_vao_;
   GLuint full_screen_quad_vbo_;
 };

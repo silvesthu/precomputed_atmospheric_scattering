@@ -57,7 +57,7 @@ to select either the functions returning radiance values, or those returning
 luminance values (see <a href="../model.h.html">model.h</a>).
 */
 
-const float PI = 3.14159265;
+// const float PI = 3.14159265;
 const vec3 kSphereCenter = vec3(0.0, 0.0, 1000.0) / kLengthUnitInMeters;
 const float kSphereRadius = 1000.0 / kLengthUnitInMeters;
 const vec3 kSphereAlbedo = vec3(0.8);

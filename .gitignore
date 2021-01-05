@@ -1,3 +1,7 @@
 output/**
 *.glsl.inc
 
+platform/windows/build/**
+platform/windows/external/**
+bin/**
+

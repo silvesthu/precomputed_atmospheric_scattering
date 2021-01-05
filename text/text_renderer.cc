@@ -104,6 +104,7 @@ void TextRenderer::SetupProgram() {
   glShaderSource(fragment_shader, 1, &fragment_shader_source, nullptr);
   glCompileShader(fragment_shader);
   program_ = glCreateProgram();
+  glObjectLabel(GL_PROGRAM, program_, -1, "TextRenderer");
   glAttachShader(program_, vertex_shader);
   glAttachShader(program_, fragment_shader);
   glLinkProgram(program_);
@@ -182,6 +183,8 @@ void TextRenderer::SetColor(float r, float g, float b) {
 }
 
 void TextRenderer::DrawText(const std::string& text, int left, int top) {
+  glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "TextRenderer");
+
   GLint viewport[4];
   glGetIntegerv(GL_VIEWPORT, viewport);
 
@@ -224,4 +227,6 @@ void TextRenderer::DrawText(const std::string& text, int left, int top) {
 
   glBindTexture(GL_TEXTURE_2D, old_texture);
   glUseProgram(old_program);
+
+  glPopDebugGroup();
 }

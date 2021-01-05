@@ -746,12 +746,14 @@ Model::Model(
   // Allocate the precomputed textures, but don't precompute them yet.
   transmittance_texture_ = NewTexture2d(
       TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
+  glObjectLabel(GL_TEXTURE, transmittance_texture_, -1, "transmittance_texture_");
   scattering_texture_ = NewTexture3d(
       SCATTERING_TEXTURE_WIDTH,
       SCATTERING_TEXTURE_HEIGHT,
       SCATTERING_TEXTURE_DEPTH,
       combine_scattering_textures || !rgb_format_supported_ ? GL_RGBA : GL_RGB,
       half_precision);
+  glObjectLabel(GL_TEXTURE, scattering_texture_, -1, "scattering_texture_");
   if (combine_scattering_textures) {
     optional_single_mie_scattering_texture_ = 0;
   } else {
@@ -761,19 +763,22 @@ Model::Model(
         SCATTERING_TEXTURE_DEPTH,
         rgb_format_supported_ ? GL_RGB : GL_RGBA,
         half_precision);
+    glObjectLabel(GL_TEXTURE, optional_single_mie_scattering_texture_, -1, "optional_single_mie_scattering_texture_");
   }
   irradiance_texture_ = NewTexture2d(
       IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
+  glObjectLabel(GL_TEXTURE, irradiance_texture_, -1, "irradiance_texture_");
 
   // Create and compile the shader providing our API.
   std::string shader =
       glsl_header_factory_({kLambdaR, kLambdaG, kLambdaB}) +
       (precompute_illuminance ? "" : "#define RADIANCE_API_ENABLED\n") +
       kAtmosphereShader;
-  const char* source = shader.c_str();
-  atmosphere_shader_ = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(atmosphere_shader_, 1, &source, NULL);
-  glCompileShader(atmosphere_shader_);
+  atmosphere_shader_source_ = shader;
+  // const char* source = shader.c_str();
+  // atmosphere_shader_ = glCreateShader(GL_FRAGMENT_SHADER);
+  // glShaderSource(atmosphere_shader_, 1, &source, NULL);
+  // glCompileShader(atmosphere_shader_);
 
   // Create a full screen quad vertex array and vertex buffer objects.
   glGenVertexArrays(1, &full_screen_quad_vao_);
@@ -807,7 +812,7 @@ Model::~Model() {
     glDeleteTextures(1, &optional_single_mie_scattering_texture_);
   }
   glDeleteTextures(1, &irradiance_texture_);
-  glDeleteShader(atmosphere_shader_);
+  // glDeleteShader(atmosphere_shader_);
 }
 
 /*
@@ -871,24 +876,28 @@ void Model::Init(unsigned int num_scattering_orders) {
   // of this method.
   GLuint delta_irradiance_texture = NewTexture2d(
       IRRADIANCE_TEXTURE_WIDTH, IRRADIANCE_TEXTURE_HEIGHT);
+  glObjectLabel(GL_TEXTURE, delta_irradiance_texture, -1, "delta_irradiance_texture");
   GLuint delta_rayleigh_scattering_texture = NewTexture3d(
       SCATTERING_TEXTURE_WIDTH,
       SCATTERING_TEXTURE_HEIGHT,
       SCATTERING_TEXTURE_DEPTH,
       rgb_format_supported_ ? GL_RGB : GL_RGBA,
       half_precision_);
+  glObjectLabel(GL_TEXTURE, delta_rayleigh_scattering_texture, -1, "delta_rayleigh_scattering_texture");
   GLuint delta_mie_scattering_texture = NewTexture3d(
       SCATTERING_TEXTURE_WIDTH,
       SCATTERING_TEXTURE_HEIGHT,
       SCATTERING_TEXTURE_DEPTH,
       rgb_format_supported_ ? GL_RGB : GL_RGBA,
       half_precision_);
+  glObjectLabel(GL_TEXTURE, delta_mie_scattering_texture, -1, "delta_mie_scattering_texture");
   GLuint delta_scattering_density_texture = NewTexture3d(
       SCATTERING_TEXTURE_WIDTH,
       SCATTERING_TEXTURE_HEIGHT,
       SCATTERING_TEXTURE_DEPTH,
       rgb_format_supported_ ? GL_RGB : GL_RGBA,
       half_precision_);
+  glObjectLabel(GL_TEXTURE, delta_scattering_density_texture, -1, "delta_scattering_density_texture");
   // delta_multiple_scattering_texture is only needed to compute scattering
   // order 3 or more, while delta_rayleigh_scattering_texture and
   // delta_mie_scattering_texture are only needed to compute double scattering.
@@ -1056,6 +1065,8 @@ void Model::Precompute(
     const mat3& luminance_from_radiance,
     bool blend,
     unsigned int num_scattering_orders) {
+  glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Precompute");
+
   // The precomputations require specific GLSL programs, for each precomputation
   // step. We create and compile them here (they are automatically destroyed
   // when this method returns, via the Program destructor).
@@ -1083,17 +1094,20 @@ void Model::Precompute(
   glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ONE, GL_ONE);
 
   // Compute the transmittance, and store it in transmittance_texture_.
+  glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Compute Transmittance");
   glFramebufferTexture(
       GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, transmittance_texture_, 0);
   glDrawBuffer(GL_COLOR_ATTACHMENT0);
   glViewport(0, 0, TRANSMITTANCE_TEXTURE_WIDTH, TRANSMITTANCE_TEXTURE_HEIGHT);
   compute_transmittance.Use();
   DrawQuad({}, full_screen_quad_vao_);
+  glPopDebugGroup();
 
   // Compute the direct irradiance, store it in delta_irradiance_texture and,
   // depending on 'blend', either initialize irradiance_texture_ with zeros or
   // leave it unchanged (we don't want the direct irradiance in
   // irradiance_texture_, but only the irradiance from the sky).
+  glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Compute Direct Irradiance");
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
       delta_irradiance_texture, 0);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
@@ -1104,11 +1118,13 @@ void Model::Precompute(
   compute_direct_irradiance.BindTexture2d(
       "transmittance_texture", transmittance_texture_, 0);
   DrawQuad({false, blend}, full_screen_quad_vao_);
+  glPopDebugGroup();
 
   // Compute the rayleigh and mie single scattering, store them in
   // delta_rayleigh_scattering_texture and delta_mie_scattering_texture, and
   // either store them or accumulate them in scattering_texture_ and
   // optional_single_mie_scattering_texture_.
+  glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Compute Single Scattering");
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
       delta_rayleigh_scattering_texture, 0);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
@@ -1132,13 +1148,16 @@ void Model::Precompute(
     compute_single_scattering.BindInt("layer", layer);
     DrawQuad({false, false, blend, blend}, full_screen_quad_vao_);
   }
+  glPopDebugGroup();
 
   // Compute the 2nd, 3rd and 4th order of scattering, in sequence.
+  glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Compute Higher Order scattering");
   for (unsigned int scattering_order = 2;
        scattering_order <= num_scattering_orders;
        ++scattering_order) {
     // Compute the scattering density, and store it in
     // delta_scattering_density_texture.
+    glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Compute Scattering Density");
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
         delta_scattering_density_texture, 0);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, 0, 0);
@@ -1164,9 +1183,11 @@ void Model::Precompute(
       compute_scattering_density.BindInt("layer", layer);
       DrawQuad({}, full_screen_quad_vao_);
     }
+    glPopDebugGroup();
 
     // Compute the indirect irradiance, store it in delta_irradiance_texture and
     // accumulate it in irradiance_texture_.
+    glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Compute Indirect Irradiance");
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
         delta_irradiance_texture, 0);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
@@ -1187,10 +1208,12 @@ void Model::Precompute(
     compute_indirect_irradiance.BindInt("scattering_order",
         scattering_order - 1);
     DrawQuad({false, true}, full_screen_quad_vao_);
+    glPopDebugGroup();
 
     // Compute the multiple scattering, store it in
     // delta_multiple_scattering_texture, and accumulate it in
     // scattering_texture_.
+    glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Accumulate Multiple Scattering");
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
         delta_multiple_scattering_texture, 0);
     glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1,
@@ -1208,10 +1231,15 @@ void Model::Precompute(
       compute_multiple_scattering.BindInt("layer", layer);
       DrawQuad({false, true}, full_screen_quad_vao_);
     }
+    glPopDebugGroup();
   }
+  glPopDebugGroup();
+
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, 0, 0);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, 0, 0);
   glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, 0, 0);
+
+  glPopDebugGroup();
 }
 
 }  // namespace atmosphere

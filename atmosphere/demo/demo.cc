@@ -42,6 +42,8 @@ independent of our atmosphere model. The only part which is related to it is the
 #include <glad/glad.h>
 #include <GL/freeglut.h>
 
+#undef DrawText
+
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -125,6 +127,7 @@ Demo::Demo(int viewport_width, int viewport_height) :
   }
 
   glutDisplayFunc([]() {
+    INSTANCES[glutGetWindow()]->InitModel(); // re-init every frame to capture it
     INSTANCES[glutGetWindow()]->HandleRedisplayEvent();
   });
   glutReshapeFunc([](int width, int height) {
@@ -295,7 +298,8 @@ to get the final scene rendering program:
   glCompileShader(vertex_shader_);
 
   const std::string fragment_shader_str =
-      "#version 330\n" +
+      // "#version 330\n" +
+      model_->shader_source() + "\n" +
       std::string(use_luminance_ != NONE ? "#define USE_LUMINANCE\n" : "") +
       "const float kLengthUnitInMeters = " +
       std::to_string(kLengthUnitInMeters) + ";\n" +
@@ -309,13 +313,14 @@ to get the final scene rendering program:
     glDeleteProgram(program_);
   }
   program_ = glCreateProgram();
+  glObjectLabel(GL_PROGRAM, program_, -1, "Demo");
   glAttachShader(program_, vertex_shader_);
   glAttachShader(program_, fragment_shader_);
-  glAttachShader(program_, model_->shader());
+  // glAttachShader(program_, model_->shader());
   glLinkProgram(program_);
   glDetachShader(program_, vertex_shader_);
   glDetachShader(program_, fragment_shader_);
-  glDetachShader(program_, model_->shader());
+  // glDetachShader(program_, model_->shader());
 
 /*
 <p>Finally, it sets the uniforms of this program that can be set once and for
@@ -387,9 +392,11 @@ void Demo::HandleRedisplayEvent() const {
       sin(sun_azimuth_angle_radians_) * sin(sun_zenith_angle_radians_),
       cos(sun_zenith_angle_radians_));
 
+  glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Render Scene");
   glBindVertexArray(full_screen_quad_vao_);
   glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
   glBindVertexArray(0);
+  glPopDebugGroup();
 
   if (show_help_) {
     std::stringstream help;
